@@ -32,6 +32,7 @@ namespace ev3 {
         uint64_t last_cyc_tim; // micro sec
         bool_t speeding_up_done;
         bool_t done;
+        bool_t blocking;
         
         // control - PI
         utils::Ema<double> ema;
@@ -47,13 +48,15 @@ namespace ev3 {
 
 
     public:
-        Motor(motor_port_t port, motor_type_t type): port(port), type(type), now_angle(0), max_accel(1000.), offset(110), target_angle(0), min_speed(50.), speeding_start_angle(0), speeding_end_angle(0), last_cyc_tim(0), speeding_up_done(false), k_p(0.), k_i(0.), i_val(0.), is_i_disabled(false), now_speed(0.) {
+        Motor(motor_port_t port, motor_type_t type): port(port), type(type), max_accel(1000.), offset(110), target_angle(0), min_speed(50.), now_angle(0), speeding_start_angle(0), speeding_end_angle(0), last_cyc_tim(0), speeding_up_done(false), k_p(0.), k_i(0.), i_val(0.), is_i_disabled(false), now_speed(0.) {
             ev3_motor_config(port,type);
-            this->specific_max_speed = this->target_speed = (type == LARGE_MOTOR ? 960. : 1440.);
+            this->specific_max_speed = (type == LARGE_MOTOR ? 960. : 1440.);
+            this->target_speed = this->specific_max_speed * 0.9;
             this->ema = utils::Ema<double>(0.85, 0.);
         }
 
         void do_tick() {
+            if (this->blocking) return;
             int32_t now_angle = ev3_motor_get_counts(this->port);
             this->now_angle = now_angle;
             uint64_t now_tim; get_tim(&now_tim);
@@ -63,7 +66,7 @@ namespace ev3 {
                 if (this->done) this->now_speed = 0;
                 else if (!this->done && this->target_angle <= now_angle) { // if done 
                     this->now_speed = 0;
-                    printf("stopped at %i\n", now_angle);
+                    printf("stopped at %i and tim %i\n", now_angle, int(now_tim/1000%1000000));
                     this->done = true;
                 } else if (!this->speeding_up_done && (this->target_angle - now_angle) <= (now_angle - this->speeding_start_angle)) {
                     this->speeding_up_done = true; this->speeding_end_angle = now_angle;
@@ -90,22 +93,31 @@ namespace ev3 {
             this->last_cyc_tim = now_tim; 
         }
 
-        void run_target(int32_t angle) {
+        void run_target(int32_t angle, bool_t blocking) {
+            bool_t first_b = this->blocking;
+            this->blocking = true;
             this->speeding_start_angle = this->now_angle;
             this->target_angle = angle;
             this->done = false;
             get_tim(&(this->last_cyc_tim));
+            this->blocking = first_b;
+            if (blocking) {
+                while (!this->done) {
+                    tslp_tsk(10*1000);
+                }
+            }
         }
 
-        void run_angle(int32_t angle) {
-            this->run_target(this->now_angle + angle);
+        void run_angle(int32_t angle, bool_t blocking) {
+            this->run_target(this->now_angle + angle, blocking);
         }
 
         int32_t get_angle() {
-            return this->angle;
+            return this->now_angle;
         }
 
-
+        void block_tick() { this->blocking = true; }
+        void unblock_tick() { this->blocking = false; }
     };
 
 }

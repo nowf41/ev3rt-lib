@@ -9,7 +9,11 @@ namespace utils {
         T ret;
 
     public:
-        Ema(T ret): ret(ret) {
+        Ema() {}
+
+        Ema(T ret, T val) {
+            this->ret=ret;
+            this->val=val;
             assert(static_cast<T>(0) < ret && ret < static_cast<T>(1));
         }
         

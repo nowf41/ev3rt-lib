@@ -8,7 +8,7 @@
 #include <algorithm>
 
 namespace ev3 {
-    struct motor_control_t {
+    class Motor {
         // control
         motor_port_t port;
         motor_type_t type;
@@ -23,96 +23,60 @@ namespace ev3 {
         int32_t target_angle; // use big value to disable
         double min_speed;
 
+        // sensor datas
+        int32_t now_angle;
+
         // control - internal data
         int32_t speeding_start_angle; // deg
         int32_t speeding_end_angle; // deg
         uint64_t last_cyc_tim; // micro sec
         bool_t speeding_up_done;
+        bool_t done;
         
         // control - PI
         utils::Ema<double> ema;
         double k_p;
         double k_i;
         double i_val;
-        bool_t is_i_disabled;
+        bool_t is_i_disabled; // true when speeding
 
         // now state
         double now_speed; // deg/s
 
         // TODO implement PI control
 
-        motor_control_t(motor_port_t port, motor_type_t type, double specified_max_speed, double max_accel, int32_t offset, double target_speed, int32_t target_angle, double min_speed, int32_t speeding_start_angle, int32_t speeding_end_angle, uint64_t speeding_up_done, int32_t ema_ret, double k_p, double k_i, double i_val, bool_t is_i_disabled, double now_speed) {
-            this->port = port;
-            this->type = type;
-            this->specified_max_speed = specified_max_speed;
-            this->max_accel = max_accel;
-            this->offset = offset;
-            this->target_speed = target_speed;
-            this->target_angle = target_angle;
-            this->min_speed = min_speed;
-            this->speeding_start_angle = speeding_start_angle;
-            this->speeding_end_angle = speeding_end_angle;
-            // TODO continue writing
-
-        }
-    };
-
-    class Motor {
-        motor_control_t m;
 
     public:
-        Motor(motor_port_t port, motor_type_t type) {
+        Motor(motor_port_t port, motor_type_t type): port(port), type(type), now_angle(0), max_accel(1000.), offset(110), target_angle(0), min_speed(50.), speeding_start_angle(0), speeding_end_angle(0), last_cyc_tim(0), speeding_up_done(false), k_p(0.), k_i(0.), i_val(0.), is_i_disabled(false), now_speed(0.) {
             ev3_motor_config(port,type);
-            this->m = motor_control_t(
-                port,
-                type,
-
-                (type == LARGE_MOTOR ? 960. : 1440.),
-                1000.,
-                110,
-                
-                (type == LARGE_MOTOR ? 960. : 1440.),
-                0,
-                50.,
-
-                0,
-                0,
-                0,
-                false,
-
-                utils::Ema<double>(0.85),
-                0.,
-                0.,
-                0.,
-                false,
-                
-                0.
-            );
+            this->specific_max_speed = this->target_speed = (type == LARGE_MOTOR ? 960. : 1440.);
+            this->ema = utils::Ema<double>(0.85, 0.);
         }
 
         void do_tick() {
-            motor_control_t& m = this->m;
-            int32_t now_angle = ev3_motor_get_counts(m.port);
+            int32_t now_angle = ev3_motor_get_counts(this->port);
+            this->now_angle = now_angle;
             uint64_t now_tim; get_tim(&now_tim);
 
             // === change now state to fit to control values ===
-            if (m.speeding_start_angle < m.target_angle) {
-                if (m.target_angle <= now_angle) { // if done 
-                    m.now_speed = 0;
+            if (this->speeding_start_angle < this->target_angle) {
+                if (this->done) this->now_speed = 0;
+                else if (!this->done && this->target_angle <= now_angle) { // if done 
+                    this->now_speed = 0;
                     printf("stopped at %i\n", now_angle);
-                    stp_cyc(MOTOR_CONTROL_CYC);
-                } else if (!m.speeding_up_done && (m.target_angle - now_angle) <= (now_angle - m.speeding_start_angle)) {
-                    m.speeding_up_done = true; m.speeding_end_angle = now_angle;
-                } else if (!m.speeding_up_done && (m.target_angle - now_angle) > (now_angle - m.speeding_start_angle)) {
-                    double speed_new = m.now_speed + m.max_accel * (static_cast<double>(now_tim - m.last_cyc_tim)/(1000.*1000.));
-                    m.now_speed = utils::clamp(speed_new, 0., m.target_speed);
-                    if (speed_new >= m.target_speed) {
-                        m.speeding_up_done = true;
-                        m.speeding_end_angle = now_angle;
+                    this->done = true;
+                } else if (!this->speeding_up_done && (this->target_angle - now_angle) <= (now_angle - this->speeding_start_angle)) {
+                    this->speeding_up_done = true; this->speeding_end_angle = now_angle;
+                } else if (!this->speeding_up_done && (this->target_angle - now_angle) > (now_angle - this->speeding_start_angle)) {
+                    double speed_new = this->now_speed + this->max_accel * (static_cast<double>(now_tim - this->last_cyc_tim)/(1000.*1000.));
+                    this->now_speed = utils::clamp(speed_new, 0., this->target_speed);
+                    if (speed_new >= this->target_speed) {
+                        this->speeding_up_done = true;
+                        this->speeding_end_angle = now_angle;
                     }
-                } else if (m.speeding_up_done && (m.target_angle - now_angle) <= static_cast<int32_t>(m.speeding_end_angle - m.speeding_start_angle + m.offset * (static_cast<double>(m.target_speed) / static_cast<double>(m.specific_max_speed)))) {
-                    double speed_new = m.now_speed - m.max_accel * (static_cast<double>(now_tim - m.last_cyc_tim)/(1000.*1000.));
-                    m.now_speed = utils::clamp(speed_new, m.min_speed, m.target_speed);
+                } else if (this->speeding_up_done && (this->target_angle - now_angle) <= static_cast<int32_t>(this->speeding_end_angle - this->speeding_start_angle + this->offset * (static_cast<double>(this->target_speed) / static_cast<double>(this->specific_max_speed)))) {
+                    double speed_new = this->now_speed - this->max_accel * (static_cast<double>(now_tim - this->last_cyc_tim)/(1000.*1000.));
+                    this->now_speed = utils::clamp(speed_new, this->min_speed, this->target_speed);
                 }
             }
 
@@ -120,17 +84,28 @@ namespace ev3 {
             // TODO impl
 
             // === send clamped values to the motor ===
-            ev3_motor_set_power(m.port, utils::clamp(int(m.now_speed * 100. / m.specific_max_speed), -100, 100));
+            ev3_motor_set_power(this->port, utils::clamp(int(this->now_speed * 100. / this->specific_max_speed), -100, 100));
             
             // === finalize ===
-            m.last_cyc_tim = now_tim; 
+            this->last_cyc_tim = now_tim; 
+        }
+
+        void run_target(int32_t angle) {
+            this->speeding_start_angle = this->now_angle;
+            this->target_angle = angle;
+            this->done = false;
+            get_tim(&(this->last_cyc_tim));
         }
 
         void run_angle(int32_t angle) {
-            this->m.speeding_start_angle = ev3_motor_get_counts(m.port);
-            this->m.target_angle = m.speeding_start_angle + 360 * 10;
-            get_tim(&(this->m.last_cyc_tim));
+            this->run_target(this->now_angle + angle);
         }
+
+        int32_t get_angle() {
+            return this->angle;
+        }
+
+
     };
 
 }

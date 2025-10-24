@@ -33,6 +33,7 @@ namespace ev3 {
         bool_t speeding_up_done;
         bool_t done;
         bool_t blocking;
+        bool_t reverse;
         
         // control - PI
         utils::Ema<double> ema;
@@ -63,6 +64,7 @@ namespace ev3 {
 
             // === change now state to fit to control values ===
             if (this->speeding_start_angle < this->target_angle) {
+                this->reverse=false;
                 if (this->done) this->now_speed = 0;
                 else if (!this->done && this->target_angle <= now_angle) { // if done 
                     this->now_speed = 0;
@@ -81,13 +83,34 @@ namespace ev3 {
                     double speed_new = this->now_speed - this->max_accel * (static_cast<double>(now_tim - this->last_cyc_tim)/(1000.*1000.));
                     this->now_speed = utils::clamp(speed_new, this->min_speed, this->target_speed);
                 }
+            } else {
+                this->reverse = true;
+                if (this->done) this->now_speed = 0;
+                else if (!this->done && this->target_angle >= now_angle) { // if done 
+                    this->now_speed = 0;
+                    printf("stopped at %i and tim %i\n", now_angle, int(now_tim/1000%1000000));
+                    this->done = true;
+                } else if (!this->speeding_up_done && (now_angle - this->target_angle) <= (this->speeding_start_angle - now_angle)) {
+                    this->speeding_up_done = true; this->speeding_end_angle = now_angle;
+                } else if (!this->speeding_up_done && (now_angle - this->target_angle) > (this->speeding_start_angle - now_angle)) {
+                    double speed_new = this->now_speed + this->max_accel * (static_cast<double>(now_tim - this->last_cyc_tim)/(1000.*1000.));
+                    this->now_speed = utils::clamp(speed_new, 0., this->target_speed);
+                    if (speed_new >= this->target_speed) {
+                        this->speeding_up_done = true;
+                        this->speeding_end_angle = now_angle;
+                    }
+                } else if (this->speeding_up_done && (now_angle - this->target_angle) <= static_cast<int32_t>(this->speeding_start_angle - this->speeding_end_angle + this->offset * (static_cast<double>(this->target_speed) / static_cast<double>(this->specific_max_speed)))) {
+                    double speed_new = this->now_speed - this->max_accel * (static_cast<double>(now_tim - this->last_cyc_tim)/(1000.*1000.));
+                    this->now_speed = utils::clamp(speed_new, this->min_speed, this->target_speed);
+                }
+ 
             }
 
             // === PI control ===
             // TODO impl
 
             // === send clamped values to the motor ===
-            ev3_motor_set_power(this->port, utils::clamp(int(this->now_speed * 100. / this->specific_max_speed), -100, 100));
+            ev3_motor_set_power(this->port, utils::clamp(int(this->now_speed * 100. / this->specific_max_speed * (this->reverse?-1:1)), -100, 100));
             
             // === finalize ===
             this->last_cyc_tim = now_tim; 

@@ -9,6 +9,7 @@
 
 namespace ev3 {
     class Motor {
+    public:
         // control
         motor_port_t port;
         motor_type_t type;
@@ -32,6 +33,7 @@ namespace ev3 {
         uint64_t last_cyc_tim; // micro sec
         bool_t speeding_up_done;
         bool_t done;
+        bool_t is_speeding_ended;
         bool_t blocking;
         bool_t reverse;
         
@@ -45,11 +47,11 @@ namespace ev3 {
         // now state
         double now_speed; // deg/s
 
+        // last state
+        int32_t last_deg;
         // TODO implement PI control
 
-
-    public:
-        Motor(motor_port_t port, motor_type_t type): port(port), type(type), max_accel(1000.), offset(110), target_angle(0), min_speed(50.), now_angle(0), speeding_start_angle(0), speeding_end_angle(0), last_cyc_tim(0), speeding_up_done(false), k_p(0.), k_i(0.), i_val(0.), is_i_disabled(false), now_speed(0.) {
+        Motor(motor_port_t port, motor_type_t type): port(port), type(type), max_accel(1000.), offset(110), target_angle(0), min_speed(50.), now_angle(0), speeding_start_angle(0), speeding_end_angle(0), last_cyc_tim(0), speeding_up_done(false), done(false), is_speeding_ended(false), blocking(false), reverse(false), k_p(0.), k_i(0.), i_val(0.), is_i_disabled(false), now_speed(0.), last_deg(0) {
             ev3_motor_config(port,type);
             this->specific_max_speed = (type == LARGE_MOTOR ? 960. : 1440.);
             this->target_speed = this->specific_max_speed * 0.9;
@@ -66,10 +68,16 @@ namespace ev3 {
             if (this->speeding_start_angle < this->target_angle) {
                 this->reverse=false;
                 if (this->done) this->now_speed = 0;
-                else if (!this->done && this->target_angle <= now_angle) { // if done 
+                else if (this->is_speeding_ended) {
+                    if (!this->done && this->target_angle <= now_angle) { // if done
+                        this->is_speeding_ended = false; // reset 
+                        printf("stopped at %i and tim %i\n", now_angle, int(now_tim/1000%1000000));
+                        this->done = true;
+                    }
+                } else if (this->target_angle <= now_angle + (now_angle - this->last_deg)*5) {
                     this->now_speed = 0;
-                    printf("stopped at %i and tim %i\n", now_angle, int(now_tim/1000%1000000));
-                    this->done = true;
+                    this->is_speeding_ended = true;
+                    ev3_motor_rotate(this->port, this->target_angle - now_angle, utils::clamp(int(this->now_speed), 0, 100), false);
                 } else if (!this->speeding_up_done && (this->target_angle - now_angle) <= (now_angle - this->speeding_start_angle)) {
                     this->speeding_up_done = true; this->speeding_end_angle = now_angle;
                 } else if (!this->speeding_up_done && (this->target_angle - now_angle) > (now_angle - this->speeding_start_angle)) {
@@ -86,11 +94,19 @@ namespace ev3 {
             } else {
                 this->reverse = true;
                 if (this->done) this->now_speed = 0;
-                else if (!this->done && this->target_angle >= now_angle) { // if done 
+                else if (this->is_speeding_ended) {
+                    if (!this->done && this->target_angle >= now_angle) { // if done
+                        this->is_speeding_ended = false;
+                        printf("stopped at %i and tim %i\n", now_angle, int(now_tim/1000%1000000));
+                        this->done = true;
+                    }
+                }
+                else if (this->target_angle >= now_angle + (now_angle - this->last_deg)*5) {
                     this->now_speed = 0;
-                    printf("stopped at %i and tim %i\n", now_angle, int(now_tim/1000%1000000));
-                    this->done = true;
-                } else if (!this->speeding_up_done && (now_angle - this->target_angle) <= (this->speeding_start_angle - now_angle)) {
+                    this->is_speeding_ended = true;
+                    ev3_motor_rotate(this->port, this->target_angle - now_angle, utils::clamp(int(this->now_speed), 0, 100), false);
+                }
+                else if (!this->speeding_up_done && (now_angle - this->target_angle) <= (this->speeding_start_angle - now_angle)) {
                     this->speeding_up_done = true; this->speeding_end_angle = now_angle;
                 } else if (!this->speeding_up_done && (now_angle - this->target_angle) > (this->speeding_start_angle - now_angle)) {
                     double speed_new = this->now_speed + this->max_accel * (static_cast<double>(now_tim - this->last_cyc_tim)/(1000.*1000.));
@@ -110,10 +126,13 @@ namespace ev3 {
             // TODO impl
 
             // === send clamped values to the motor ===
-            ev3_motor_set_power(this->port, utils::clamp(int(this->now_speed * 100. / this->specific_max_speed * (this->reverse?-1:1)), -100, 100));
-            
+            if (!this->is_speeding_ended) {
+                ev3_motor_set_power(this->port, utils::clamp(int(this->now_speed * 100. / this->specific_max_speed * (this->reverse?-1:1)), -100, 100));
+            }
+
             // === finalize ===
             this->last_cyc_tim = now_tim; 
+            this->last_deg = now_angle;
         }
 
         void run_target(int32_t angle, bool_t blocking) {

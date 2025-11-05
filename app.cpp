@@ -3,17 +3,15 @@
 #include "motor.h"
 #include "motor_pair.h"
 
-ev3::Motor motor_l(EV3_PORT_B, LARGE_MOTOR), motor_r(EV3_PORT_C, LARGE_MOTOR);
-ev3::MotorPair p(motor_l, motor_r, ___, ___); 
+ev3::Motor motor_l(EV3_PORT_D, LARGE_MOTOR);
+ev3::Motor motor_r(EV3_PORT_C, LARGE_MOTOR);
 void main_task(intptr_t unused) {
+    motor_l.target_speed = motor_l.specific_max_speed * 0.8;
+    motor_r.target_speed = motor_r.specific_max_speed * 0.8;
+    ev3::MotorPair p(motor_l, motor_r, 56, 180); 
     tslp_tsk(3*1000*1000);
     sta_cyc(MOTOR_CONTROL_CYC);
-    motor_l.block_tick();
-    motor_r.block_tick();
-    motor_l.run_angle(-360, false);
-    motor_r.run_angle(-360, false);
-    motor_l.unblock_tick();
-    motor_r.unblock_tick();
+    p.straight(1000., true);
     tslp_tsk(60*1000*1000);
     stp_cyc(MOTOR_CONTROL_CYC);
 }

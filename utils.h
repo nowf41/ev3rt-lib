@@ -15,6 +15,15 @@ namespace utils {
         }
     }
 
+    template <typename T>
+    T abs(T val) {
+        if (val >= 0) {
+            return val;
+        } else {
+            return -val;
+        }
+    }
+
 }
 
 #endif // _UTILS_H_

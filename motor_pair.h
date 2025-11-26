@@ -8,15 +8,15 @@ constexpr const double PI = 3.1415926535;
 
 namespace ev3 {
     enum MotorControlStates {
-        kSpeedIncrease,
-        kSpeedKeep,
-        kSpeedDecrease,
-        kAdjusting,
-        kBroken
+        kSpeedIncrease=0,
+        kSpeedKeep=1,
+        kSpeedDecrease=2,
+        kAdjusting=3,
+        kBroken=4
     };
 
     class MotorPair {
-    protected:
+    public:
         // metadata
         motor_port_t left_motor_port, right_motor_port;
         double wheel_diameter, axle_track;
@@ -35,6 +35,7 @@ namespace ev3 {
         double target_speed_r = 0.; // deg/s. can be minus value.
         double target_angle_l = 0.; // deg. this value will be added everytime.
         double target_angle_r = 0.; // deg. this value will be added everytime.
+        double stop_before = 60.;
 
         // PI data
         double left_power_correction_val = 0.; // deg/s
@@ -71,8 +72,8 @@ namespace ev3 {
             uint64_t now_tim; get_tim(&now_tim);
             int32_t now_motor_angle_l = ev3_motor_get_counts(this->left_motor_port);
             int32_t now_motor_angle_r = ev3_motor_get_counts(this->right_motor_port);
-            this->left_motor_actual_speed.add(now_motor_angle_l - this->latest_left_motor_angle);
-            this->right_motor_actual_speed.add(now_motor_angle_r - this->latest_right_motor_angle);
+            this->left_motor_actual_speed.add(static_cast<double>(now_motor_angle_l - this->latest_left_motor_angle) * (1000000./static_cast<double>(now_tim-this->latest_tim)));
+            this->right_motor_actual_speed.add(static_cast<double>(now_motor_angle_r - this->latest_right_motor_angle) * (1000000./static_cast<double>(now_tim-this->latest_tim)));
 
             // === do feedback control ===
 
@@ -87,15 +88,17 @@ namespace ev3 {
             // kIncrease -> kSpeedKeep is implemented at INCREASE function
 
             // if the motor should start speeding down
-            if (this->state == kSpeedKeep && (abs(this->target_angle_l - now_motor_angle_l) <= abs(this->speeding_end_at - this->speeding_start_at))) {
+            if (this->state == kSpeedKeep && (abs(this->target_angle_l - now_motor_angle_l) <= abs(this->speeding_end_at - this->speeding_start_at) + this->stop_before * (this->left_motor_actual_speed.get()/this->specific_max_speed))) {
                 this->state = kSpeedDecrease;
             }
-            if (this->state == kSpeedIncrease && (abs(this->target_angle_l - now_motor_angle_l) <= abs(now_motor_angle_l - this->speeding_start_at))) {
+            if (this->state == kSpeedIncrease && (abs(this->target_angle_l - now_motor_angle_l) <= abs(now_motor_angle_l - this->speeding_start_at) + this->stop_before * (this->left_motor_actual_speed.get()/this->specific_max_speed))) {
                 this->state = kSpeedDecrease;
             }
 
             // kSpeedDecrease -> kAdjusting -> kBroken is implemented at each function
-            
+            if (this->target_speed_l > 0 && this->target_angle_l <= now_motor_angle_l || this->target_speed_l < 0 && this->target_angle_l >= now_motor_angle_l) {
+                this->now_speed_l = this->now_speed_r = 0.;
+            }
             
             
             // === do the actual calculation ===
@@ -104,6 +107,7 @@ namespace ev3 {
                     double next_l = this->now_speed_l + this->max_accel * double(now_tim - this->latest_tim) * (this->target_speed_l >= 0 ? 1 : -1) / 1000000;
                     if (this->target_speed_l >= 0 && next_l >= this->target_speed_l || this->target_speed_l < 0 && next_l <= this->target_speed_l)  {
                         next_l = this->target_speed_l;
+                        this->speeding_end_at = now_motor_angle_l;
                         this->state = kSpeedKeep;
                     }
                     this->now_speed_l = next_l;
@@ -152,6 +156,8 @@ namespace ev3 {
 
 
             // === finalize ===
+            ev3_motor_set_power(this->left_motor_port, utils::clamp<int>((this->now_speed_l+this->left_power_correction_val)*100/this->specific_max_speed, -100, 100));
+            ev3_motor_set_power(this->right_motor_port, utils::clamp<int>((this->now_speed_r+this->right_power_correction_val)*100/this->specific_max_speed, -100, 100));
             this->latest_left_motor_angle = now_motor_angle_l;
             this->latest_right_motor_angle = now_motor_angle_r;
             this->latest_tim = now_tim;
@@ -164,6 +170,8 @@ namespace ev3 {
         void runTarget(double speed, double target) {
             this->target_speed_l = this->target_speed_r = speed;
             this->target_angle_l = this->target_angle_r = target;
+            this->state = kSpeedIncrease;
+            get_tim(&(this->latest_tim));
         }
 
         /// @brief Runs the motor pair for specified angle.
@@ -173,24 +181,8 @@ namespace ev3 {
             this->target_speed_l = this->target_speed_r = speed;
             this->target_angle_l = ev3_motor_get_counts(this->left_motor_port) + utils::abs(angle) * (speed > 0 ? 1 : -1);
             this->target_angle_r = ev3_motor_get_counts(this->right_motor_port) + utils::abs(angle) * (speed > 0 ? 1 : -1);
-        }
-
-        void turn(double speed, double angle) {
-            this->turnAdvanced(true, true, speed, angle);
-        }
-
-        void turnAdvanced(bool_t use_left_motor, bool_t use_right_motor, double speed, double angle) {
-            if (use_left_motor && use_right_motor) {
-                this->target_speed_l = this->target_speed_r = speed;
-
-                // TODO impl
-            } else if (use_left_motor) {
-                // TOOD impl
-            } else if (use_right_motor) {
-                // TODO impl
-            } else {
-                assert(false);
-            }
+            this->state = kSpeedIncrease;
+            get_tim(&(this->latest_tim));
         }
 
         MotorControlStates get_now_state() {

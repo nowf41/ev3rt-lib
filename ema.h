@@ -1,6 +1,8 @@
 #ifndef _EMA_H_
 #define _EMA_H_
 
+#include <cassert>
+
 namespace utils {
     template <typename T>
     class Ema {

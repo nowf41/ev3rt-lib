@@ -1,5 +1,6 @@
 #ifndef _MOTOR_PAIR_H_
 #define _MOTOR_PAIR_H_
+#define DEBUG
 
 #include "motor.h"
 #include "ema.h"
@@ -51,6 +52,10 @@ namespace ev3 {
         int32_t latest_left_motor_angle = 0;
         int32_t latest_right_motor_angle = 0;
         uint64_t latest_tim = 0;
+
+        double left_motor_rec[1000];
+        double right_motor_rec[1000];
+        unsigned int next_rec_at = 0;
         
     public:
         MotorPair(
@@ -139,11 +144,11 @@ namespace ev3 {
                 }
 
                 case kAdjusting: {
-                    if (this->target_speed_l >= 0 && this->latest_left_motor_angle >= this->target_angle_l) {
+                    if (this->target_speed_l >= 0 && now_motor_angle_l >= this->target_angle_l) {
                         ev3_motor_stop(this->left_motor_port, true);
                         now_speed_l = 0.;
                     }
-                    if (this->target_speed_r >= 0 && this->latest_right_motor_angle >= this->target_angle_r) {
+                    if (this->target_speed_r >= 0 && now_motor_angle_r >= this->target_angle_r) {
                         ev3_motor_stop(this->right_motor_port, true);
                         now_speed_r = 0.;
                     }
@@ -161,6 +166,11 @@ namespace ev3 {
             this->latest_left_motor_angle = now_motor_angle_l;
             this->latest_right_motor_angle = now_motor_angle_r;
             this->latest_tim = now_tim;
+
+            this->left_motor_rec[this->next_rec_at] = this->left_motor_actual_speed.get();
+            this->right_motor_rec[this->next_rec_at] = this->right_motor_actual_speed.get();
+            ++(this->next_rec_at);
+            next_rec_at %= 1000;
         }
 
         void runForever(double speed) { // deg/s

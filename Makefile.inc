@@ -1,6 +1,6 @@
 APPL_COBJS += 
 
-APPL_CXXOBJS +=
+APPL_CXXOBJS += utils.o ema.o motor_pair.o motor.o
 
 SRCLANG := c++
 

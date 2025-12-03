@@ -1,8 +1,6 @@
 #ifndef _EMA_H_
 #define _EMA_H_
 
-#include <cassert>
-
 namespace utils {
     template <typename T>
     class Ema {
@@ -11,24 +9,11 @@ namespace utils {
         T ret;
 
     public:
-        Ema() {}
-
-        Ema(T ret, T val) {
-            this->ret=ret;
-            this->val=val;
-            assert(static_cast<T>(0) < ret && ret < static_cast<T>(1));
-        }
-        
-        void add(T value) {
-            this->val = this->val*this->ret + value*(1-this->ret);
-        }
-
-        T get() {
-            return val;
-        }
+        Ema();
+        Ema(T ret, T val);
+        void add(T value);
+        T get();
     };
-
-
 }
 
 #endif // _EMA_H_

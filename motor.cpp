@@ -1,7 +1,6 @@
 #include "motor.h"
 
 #include "ev3api.h"
-#include "ema.h"
 #include "utils.h"
 
 ev3::Motor::Motor(motor_port_t port, motor_type_t type) {

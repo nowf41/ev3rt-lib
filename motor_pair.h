@@ -2,7 +2,6 @@
 #define _MOTOR_PAIR_H_
 #define DEBUG
 
-#include "ema.h"
 #include "utils.h"
 
 #include "ev3api.h"

@@ -1,5 +1,4 @@
 #include "motor_pair.h"
-#include "ema.h"
 #include "utils.h"
 
 #include "ev3api.h"

@@ -2,7 +2,6 @@
 #define _MOTOR_H_
 
 #include "ev3api.h"
-#include "ema.h"
 #include "utils.h"
 
 namespace ev3 {

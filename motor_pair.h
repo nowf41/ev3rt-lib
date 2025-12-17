@@ -3,8 +3,9 @@
 #define DEBUG
 
 #include "utils.h"
-
 #include "ev3api.h"
+
+#include <array>
 
 namespace ev3 {
     enum MotorControlStates {
@@ -52,15 +53,17 @@ namespace ev3 {
         int32_t latest_right_motor_angle = 0;
         uint64_t latest_tim = 0;
 
-        double left_motor_rec[1000];
-        double right_motor_rec[1000];
+        std::array<double, 1000>* left_motor_rec;
+        std::array<double, 1000>* right_motor_rec;
         int next_rec_at = 0;
         
     public:
         MotorPair(
             motor_port_t left_motor_port, motor_port_t right_motor_port,
             double wheel_diameter, double axle_track, // mm
-            double max_accel // deg/s
+            double max_accel, // deg/s
+            std::array<double, 1000> *left_motor_rec,
+            std::array<double, 1000> *right_motor_rec
         );
 
         void doTick();

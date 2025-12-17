@@ -6,7 +6,9 @@
 ev3::MotorPair::MotorPair(
     motor_port_t left_motor_port, motor_port_t right_motor_port,
     double wheel_diameter, double axle_track, // mm
-    double max_accel // deg/s
+    double max_accel, // deg/s
+    std::array<double, 1000> *left_motor_rec,
+    std::array<double, 1000> *right_motor_rec
 ) {
     assert(wheel_diameter > 0. && axle_track > 0. && max_accel > 0.);
 
@@ -15,6 +17,8 @@ ev3::MotorPair::MotorPair(
     this->wheel_diameter = wheel_diameter;
     this->axle_track = axle_track;
     this->max_accel = max_accel;
+    this->left_motor_rec = left_motor_rec;
+    this->right_motor_rec = right_motor_rec;
 
     ev3_motor_config(left_motor_port, LARGE_MOTOR);
     ev3_motor_config(right_motor_port, LARGE_MOTOR);
@@ -122,8 +126,8 @@ void ev3::MotorPair::doTick() {
     this->latest_tim = now_tim;
 
     if (this->next_rec_at < 1000) {
-        this->left_motor_rec[this->next_rec_at] = this->left_motor_actual_speed.get();
-        this->right_motor_rec[this->next_rec_at] = this->right_motor_actual_speed.get();
+        (*this->left_motor_rec)[this->next_rec_at] = this->left_motor_actual_speed.get();
+        (*this->right_motor_rec)[this->next_rec_at] = this->right_motor_actual_speed.get();
         ++(this->next_rec_at);
     }
 }

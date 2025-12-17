@@ -10,5 +10,5 @@ jobs:
     - name: Build and run tests
       run: |
         cd tests/
-        make
+        make all
         ./a.out

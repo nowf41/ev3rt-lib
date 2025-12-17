@@ -11,7 +11,7 @@ namespace utils {
     class PidCalc {
     public:
         double kp, ki, kd;
-        double p_val; // 加算
+        double p_val;
         utils::Ema<double> i_val; // 減衰
         double d_val;
         double recent_val = 0.;
@@ -24,7 +24,7 @@ namespace utils {
         void add(double val, uint64_t tim) {
             if (last_tim == 0) last_tim = tim;
             double dt = us_to_sec(tim - last_tim);
-            this->p_val += val * this->kp * dt;
+            this->p_val = val * this->kp;
             this->i_val.add(val * dt);
             this->d_val = (val - this->recent_val) * dt;
             this->recent_val = val;

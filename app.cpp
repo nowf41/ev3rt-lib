@@ -1,27 +1,30 @@
 #include "ev3api.h"
 #include "app.h"
-#include "motor.h"
 #include "motor_pair.h"
 
-ev3::Motor motor_l(EV3_PORT_D, LARGE_MOTOR);
-ev3::Motor motor_r(EV3_PORT_C, LARGE_MOTOR);
+#include <array>
+
+static std::array<double, 1000> ar1, ar2;
+
+ev3::MotorPair pair(EV3_PORT_D, EV3_PORT_C, 56., 182., 990., &ar1, &ar2);
 void main_task(intptr_t unused) {
-    motor_l.target_speed = motor_l.specific_max_speed * 0.8;
-    motor_r.target_speed = motor_r.specific_max_speed * 0.8;
-    motor_l.k_p = motor_r.k_p = 0.;
-    motor_l.n = 0;
-    motor_r.n = 1;
-    
-    ev3::MotorPair p(motor_l, motor_r, 56, 180); 
-    tslp_tsk(3*1000*1000);
     sta_cyc(MOTOR_CONTROL_CYC);
-    p.straight(1000., true);
-    tslp_tsk(60*1000*1000);
+    tslp_tsk(5000000);
+    get_tim(&(pair.latest_tim));
+    pair.runTarget(-990., -3600.);
+
+    while (pair.get_now_state() != ev3::kBroken) tslp_tsk(10 * 1000);
+    tslp_tsk(100 * 1000);
     stp_cyc(MOTOR_CONTROL_CYC);
+
+    for (int i = 0; i < 1000; i++) {
+        char buf1[40];
+        sprintf(buf1, "<%f  %f>", ar1[i], ar2[i]);
+        syslog(LOG_NOTICE, buf1);
+    }
+    printf("\nFIN\n");
 }
 
 void motor_control_task(intptr_t unused) {
-    motor_l.do_tick();
-    motor_r.do_tick();
+    pair.doTick();
 }
-

@@ -1,0 +1,14 @@
+name: cpputest-runner
+on: [push, pull_request]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Install dependencies
+      run: sudo apt-get install -y build-essential cpputest
+    - name: Build and run tests
+      run: |
+        cd tests/
+        make
+        ./a.out

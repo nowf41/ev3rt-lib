@@ -19,6 +19,7 @@ ev3::MotorPair::MotorPair(
     this->max_accel = max_accel;
     this->left_motor_rec = left_motor_rec;
     this->right_motor_rec = right_motor_rec;
+    this->next_rec_at = 0;
 
     ev3_motor_config(left_motor_port, LARGE_MOTOR);
     ev3_motor_config(right_motor_port, LARGE_MOTOR);

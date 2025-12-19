@@ -29,8 +29,8 @@ ev3::MotorPair::MotorPair(
     this->left_motor_actual_speed = utils::Ema<double>(0.8, 0.);
     this->right_motor_actual_speed = utils::Ema<double>(0.8, 0.);
 
-    this->pid_left = utils::PidCalc(0.5, 0.2, 0.); // kp, ki, kd
-    this->pid_right = utils::PidCalc(0.5, 0.2, 0.); // kp, ki, kd
+    this->pid_left = utils::PidCalc(0.4, 0.1, 0., 100.); // kp, ki, kd
+    this->pid_right = utils::PidCalc(0.4, 0.1, 0., 100.); // kp, ki, kd
 }
 
 void ev3::MotorPair::doTick() {

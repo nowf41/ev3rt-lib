@@ -14,12 +14,15 @@ namespace utils {
         double i_val;
         double d_val;
         double recent_val = 0.;
+        double i_max;
         uint64_t last_tim;
 
     public:
         PidCalc() {}
 
-        PidCalc(double kp, double ki, double kd) : kp(kp), ki(ki), kd(kd), p_val(0.), i_val(0.), d_val(0.), last_tim(0) {}
+        PidCalc(double kp, double ki, double kd, double i_max) : kp(kp), ki(ki), kd(kd), p_val(0.), i_val(0.), d_val(0.), last_tim(0), i_max(i_max) {
+            assert(i_max >= 0.);
+        }
 
         void add(double val, uint64_t tim) {
             if (last_tim == 0) last_tim = tim;
@@ -33,7 +36,7 @@ namespace utils {
         }
 
         double get() {
-            return this->p_val + this->i_val + this->d_val * kd;
+            return this->p_val + utils::clamp(this->i_val, -i_max, i_max) + this->d_val * kd;
         }
     };
 }

@@ -4,6 +4,7 @@
 
 #include "utils.h"
 #include "ev3api.h"
+#include "pidcalc.h"
 
 #include <array>
 
@@ -39,8 +40,8 @@ namespace ev3 {
         double stop_before = 60.;
 
         // PI data
-        double left_power_correction_val = 0.; // deg/s
-        double right_power_correction_val = 0.; // deg/s
+        utils::PidCalc pid_left;
+        utils::PidCalc pid_right;
 
         // control data
         double now_speed_l = 0.; // deg/s. can be minus value.

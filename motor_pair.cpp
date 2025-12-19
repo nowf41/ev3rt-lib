@@ -28,6 +28,9 @@ ev3::MotorPair::MotorPair(
 
     this->left_motor_actual_speed = utils::Ema<double>(0.8, 0.);
     this->right_motor_actual_speed = utils::Ema<double>(0.8, 0.);
+
+    this->pid_left = utils::PidCalc(0.5, 0.2, 0.); // kp, ki, kd
+    this->pid_right = utils::PidCalc(0.5, 0.2, 0.); // kp, ki, kd
 }
 
 void ev3::MotorPair::doTick() {
@@ -40,7 +43,10 @@ void ev3::MotorPair::doTick() {
     this->right_motor_actual_speed.add(static_cast<double>(now_motor_angle_r - this->latest_right_motor_angle) * (1000000./static_cast<double>(now_tim-this->latest_tim)));
 
     // === do feedback control ===
-
+    
+    // add feedback
+    pid_left.add(-(this->left_motor_actual_speed.get() - this->now_speed_l), now_tim);
+    pid_right.add(-(this->right_motor_actual_speed.get() - this->now_speed_r), now_tim);
 
     // === judge the change of state ===
     
@@ -120,15 +126,15 @@ void ev3::MotorPair::doTick() {
 
 
     // === finalize ===
-    ev3_motor_set_power(this->left_motor_port, utils::clamp<int>((this->now_speed_l+this->left_power_correction_val)*100/this->specific_max_speed, -100, 100));
-    ev3_motor_set_power(this->right_motor_port, utils::clamp<int>((this->now_speed_r+this->right_power_correction_val)*100/this->specific_max_speed, -100, 100));
+    ev3_motor_set_power(this->left_motor_port, utils::clamp<int>(static_cast<int>((this->now_speed_l+this->pid_left.get())*100./this->specific_max_speed), -100, 100));
+    ev3_motor_set_power(this->right_motor_port, utils::clamp<int>(static_cast<int>((this->now_speed_r+this->pid_right.get())*100./this->specific_max_speed), -100, 100));
     this->latest_left_motor_angle = now_motor_angle_l;
     this->latest_right_motor_angle = now_motor_angle_r;
     this->latest_tim = now_tim;
 
     if (this->next_rec_at < 1000) {
         (*this->left_motor_rec)[this->next_rec_at] = this->left_motor_actual_speed.get();
-        (*this->right_motor_rec)[this->next_rec_at] = this->right_motor_actual_speed.get();
+        (*this->right_motor_rec)[this->next_rec_at] = this->pid_left.get();
         ++(this->next_rec_at);
     }
 }

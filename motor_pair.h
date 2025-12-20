@@ -5,6 +5,7 @@
 #include "utils.h"
 #include "ev3api.h"
 #include "pidcalc.h"
+#include "machine_val.h"
 
 #include <array>
 
@@ -22,7 +23,7 @@ namespace ev3 {
         // metadata
         motor_port_t left_motor_port, right_motor_port;
         double wheel_diameter, axle_track;
-        double specific_max_speed = 990.; // deg/s. equals to 165rpm
+        double specific_max_speed = machine_val::motor_max_speed; // deg/s. equals to 165rpm
         double min_speed = 100.;
 
         // Daikei speeding data
@@ -37,7 +38,7 @@ namespace ev3 {
         double target_speed_r = 0.; // deg/s. can be minus value.
         double target_angle_l = 0.; // deg. this value will be added everytime.
         double target_angle_r = 0.; // deg. this value will be added everytime.
-        double stop_before = 60.;
+        double stop_before = 110.;
 
         // PI data
         utils::PidCalc pid_left;
@@ -54,8 +55,10 @@ namespace ev3 {
         int32_t latest_right_motor_angle = 0;
         uint64_t latest_tim = 0;
 
-        std::array<double, 1000>* left_motor_rec;
-        std::array<double, 1000>* right_motor_rec;
+        std::array<double, 1000>* rec1;
+        std::array<double, 1000>* rec2;
+        std::array<double, 1000>* rec3;
+        std::array<double, 1000>* rec4;
         int next_rec_at = 0;
         
     public:
@@ -63,8 +66,10 @@ namespace ev3 {
             motor_port_t left_motor_port, motor_port_t right_motor_port,
             double wheel_diameter, double axle_track, // mm
             double max_accel, // deg/s
-            std::array<double, 1000> *left_motor_rec,
-            std::array<double, 1000> *right_motor_rec
+            std::array<double, 1000>* rec1,
+            std::array<double, 1000>* rec2,
+            std::array<double, 1000>* rec3,
+            std::array<double, 1000>* rec4
         );
 
         void doTick();

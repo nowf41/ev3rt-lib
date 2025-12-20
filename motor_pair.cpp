@@ -1,5 +1,6 @@
 #include "motor_pair.h"
 #include "utils.h"
+#include "machine_val.h"
 
 #include "ev3api.h"
 
@@ -7,8 +8,10 @@ ev3::MotorPair::MotorPair(
     motor_port_t left_motor_port, motor_port_t right_motor_port,
     double wheel_diameter, double axle_track, // mm
     double max_accel, // deg/s
-    std::array<double, 1000> *left_motor_rec,
-    std::array<double, 1000> *right_motor_rec
+    std::array<double, 1000> *rec1,
+    std::array<double, 1000> *rec2,
+    std::array<double, 1000> *rec3,
+    std::array<double, 1000> *rec4
 ) {
     assert(wheel_diameter > 0. && axle_track > 0. && max_accel > 0.);
 
@@ -17,8 +20,10 @@ ev3::MotorPair::MotorPair(
     this->wheel_diameter = wheel_diameter;
     this->axle_track = axle_track;
     this->max_accel = max_accel;
-    this->left_motor_rec = left_motor_rec;
-    this->right_motor_rec = right_motor_rec;
+    this->rec1 = rec1;
+    this->rec2 = rec2;
+    this->rec3 = rec3;
+    this->rec4 = rec4;
     this->next_rec_at = 0;
 
     ev3_motor_config(left_motor_port, LARGE_MOTOR);
@@ -29,8 +34,8 @@ ev3::MotorPair::MotorPair(
     this->left_motor_actual_speed = utils::Ema<double>(0.8, 0.);
     this->right_motor_actual_speed = utils::Ema<double>(0.8, 0.);
 
-    this->pid_left = utils::PidCalc(0.4, 0.1, 0., 100.); // kp, ki, kd
-    this->pid_right = utils::PidCalc(0.4, 0.1, 0., 100.); // kp, ki, kd
+    this->pid_left = utils::PidCalc(0.4, 0.1, 0., machine_val::i_val_start); // kp, ki, kd, i_max
+    this->pid_right = utils::PidCalc(0.4, 0.1, 0., machine_val::i_val_start); // kp, ki, kd, i_max
 }
 
 void ev3::MotorPair::doTick() {
@@ -53,6 +58,8 @@ void ev3::MotorPair::doTick() {
     // if the motor should start running
     if (this->state == kBroken && ((this->target_angle_l - now_motor_angle_l >= 0) ^ (this->target_speed_l >= 0)) == 0) {
         this->state = kSpeedIncrease;
+        this->pid_left.set_i_status(false);
+        this->pid_right.set_i_status(false);
     }
 
     // kIncrease -> kSpeedKeep is implemented at INCREASE function
@@ -60,9 +67,13 @@ void ev3::MotorPair::doTick() {
     // if the motor should start speeding down
     if (this->state == kSpeedKeep && (utils::abs(this->target_angle_l - now_motor_angle_l) <= utils::abs(this->speeding_end_at - this->speeding_start_at) + this->stop_before * (this->left_motor_actual_speed.get()/this->specific_max_speed))) {
         this->state = kSpeedDecrease;
+        this->pid_left.set_i_status(false);
+        this->pid_right.set_i_status(false);
     }
     if (this->state == kSpeedIncrease && (utils::abs(this->target_angle_l - now_motor_angle_l) <= utils::abs(now_motor_angle_l - this->speeding_start_at) + this->stop_before * (this->left_motor_actual_speed.get()/this->specific_max_speed))) {
         this->state = kSpeedDecrease;
+        this->pid_left.set_i_status(false);
+        this->pid_right.set_i_status(false);
     }
 
     // kSpeedDecrease -> kAdjusting -> kBroken is implemented at each function
@@ -79,12 +90,15 @@ void ev3::MotorPair::doTick() {
                 next_l = this->target_speed_l;
                 this->speeding_end_at = now_motor_angle_l;
                 this->state = kSpeedKeep;
+
+                this->pid_left.set_i_status(true);
             }
             this->now_speed_l = next_l;
 
             double next_r = this->now_speed_r + this->max_accel * double(now_tim - this->latest_tim) * (this->target_speed_r >= 0 ? 1 : -1) / 1000000;
             if (this->target_speed_r >= 0 && next_r >= this->target_speed_r || this->target_speed_r < 0 && next_r <= this->target_speed_r) {
                 next_r = this->target_speed_r;
+                this->pid_right.set_i_status(true);
             }
             this->now_speed_r = next_r;
             break;
@@ -95,14 +109,14 @@ void ev3::MotorPair::doTick() {
         case kSpeedDecrease: {
             double next_l = this->now_speed_l - this->max_accel * double(now_tim - this->latest_tim) * (this->target_speed_l >= 0 ? 1 : -1) / 1000000;
             if (this->target_speed_l >= 0 && next_l <= this->min_speed || this->target_speed_l < 0 && next_l >= this->min_speed)  {
-                next_l = this->target_speed_l;
+                next_l = this->min_speed * (this->target_speed_l > 0 ? 1 : -1);
                 this->state = kAdjusting;
             }
             this->now_speed_l = next_l;
 
             double next_r = this->now_speed_r - this->max_accel * double(now_tim - this->latest_tim) * (this->target_speed_r >= 0 ? 1 : -1) / 1000000;
             if (this->target_speed_r >= 0 && next_r <= this->min_speed || this->target_speed_r < 0 && next_r >= this->min_speed) {
-                next_r = this->target_speed_r;
+                next_r = this->min_speed * (this->target_speed_r > 0 ? 1 : -1);
             }
             this->now_speed_r = next_r;
             break;
@@ -126,15 +140,18 @@ void ev3::MotorPair::doTick() {
 
 
     // === finalize ===
-    ev3_motor_set_power(this->left_motor_port, utils::clamp<int>(static_cast<int>((this->now_speed_l+this->pid_left.get())*100./this->specific_max_speed), -100, 100));
-    ev3_motor_set_power(this->right_motor_port, utils::clamp<int>(static_cast<int>((this->now_speed_r+this->pid_right.get())*100./this->specific_max_speed), -100, 100));
+    ev3_motor_set_power(this->left_motor_port, utils::clamp<int>(static_cast<int>((this->now_speed_l + (this->state==kSpeedKeep?this->pid_left.get(): ((this->now_speed_l/this->specific_max_speed)*pid_left.get_i_val()) ))*100./this->specific_max_speed), -100, 100));
+    ev3_motor_set_power(this->right_motor_port, utils::clamp<int>(static_cast<int>((this->now_speed_r + (this->state==kSpeedKeep?this->pid_right.get(): ((this->now_speed_r/this->specific_max_speed)*pid_right.get_i_val()) ))*100./this->specific_max_speed), -100, 100));
     this->latest_left_motor_angle = now_motor_angle_l;
     this->latest_right_motor_angle = now_motor_angle_r;
     this->latest_tim = now_tim;
 
     if (this->next_rec_at < 1000) {
-        (*this->left_motor_rec)[this->next_rec_at] = this->left_motor_actual_speed.get();
-        (*this->right_motor_rec)[this->next_rec_at] = this->pid_left.get();
+        (*this->rec1)[this->next_rec_at] = this->left_motor_actual_speed.get();
+        (*this->rec2)[this->next_rec_at] = this->now_speed_l + (this->state == kSpeedKeep ? this->pid_left.get() : ((this->now_speed_l/this->specific_max_speed)*pid_left.get_i_val()));
+        (*this->rec3)[this->next_rec_at] = this->right_motor_actual_speed.get();
+        (*this->rec4)[this->next_rec_at] = this->now_speed_r + (this->state == kSpeedKeep ? this->pid_left.get() : ((this->now_speed_r/this->specific_max_speed)*pid_left.get_i_val()));
+
         ++(this->next_rec_at);
     }
 }
